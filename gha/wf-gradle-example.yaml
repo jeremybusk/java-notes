@@ -1,0 +1,61 @@
+name: Java 21 Gradle CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # PRs restore caches; only main writes them.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Make Gradle Wrapper executable
+        run: chmod +x gradlew
+
+      - name: Test first, then complete build
+        run: >-
+          ./gradlew test --fail-fast build
+          --build-cache
+          --no-daemon
+          --stacktrace
+          --console=plain
+
+      - name: Upload reports on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: gradle-reports-${{ github.run_attempt }}
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          if-no-files-found: warn
+          retention-days: 7
